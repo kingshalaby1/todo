@@ -1,8 +1,9 @@
-
 defmodule Todo.List do
   defstruct auto_id: 1, entries: %{}
 
   def new(entries \\ []) do
+    IO.puts("in Todo.List.new #{inspect(self())}")
+
     Enum.reduce(
       entries,
       %Todo.List{},
@@ -11,6 +12,7 @@ defmodule Todo.List do
   end
 
   def add_entry(todo_list, entry) do
+    IO.puts("in Todo.List.add_entry #{inspect(self())}")
     entry = Map.put(entry, :id, todo_list.auto_id)
     new_entries = Map.put(todo_list.entries, todo_list.auto_id, entry)
 
@@ -18,6 +20,8 @@ defmodule Todo.List do
   end
 
   def entries(todo_list, date) do
+    IO.puts("in Todo.List.entries #{inspect(self())}")
+
     todo_list.entries
     |> Stream.filter(fn {_, entry} -> entry.date == date end)
     |> Enum.map(fn {_, entry} -> entry end)
