@@ -1,55 +1,44 @@
 defmodule Todo.Database do
   @moduledoc """
-  Manages a pool of database workers, and forwards database requests to them
+  supervises a pool of database workers, and forwards database requests to them
   """
-  use GenServer
-
+  @pool_size 3
   @db_folder "./persist"
 
-  def start do
-    IO.puts("in Todo.Database.start #{inspect(self())}")
-    GenServer.start(__MODULE__, nil, name: __MODULE__)
+  def start_link do
+    IO.puts("Starting database.")
+    File.mkdir_p!(@db_folder)
+
+    children = Enum.map(1..@pool_size, &worker_spec/1)
+    Supervisor.start_link(children, strategy: :one_for_one)
+  end
+
+  def child_spec(_) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, []},
+      type: :supervisor
+    }
   end
 
   def store(key, data) do
-    IO.puts("in Todo.Database.store #{inspect(self())}")
-
     key
     |> choose_worker()
     |> Todo.DatabaseWorker.store(key, data)
   end
 
   def get(key) do
-    IO.puts("in Todo.Database.get #{inspect(self())}")
-
     key
     |> choose_worker()
     |> Todo.DatabaseWorker.get(key)
   end
 
-  def init(_) do
-    IO.puts("in Todo.Database.init #{inspect(self())}")
-    File.mkdir_p!(@db_folder)
-
-    workers =
-      Enum.reduce(0..2, %{}, fn index, acc ->
-        {:ok, pid} = Todo.DatabaseWorker.start(@db_folder)
-        Map.put(acc, index, pid)
-      end)
-
-    {:ok, workers}
+  defp worker_spec(worker_id) do
+    default_worker_spec = {Todo.DatabaseWorker, {@db_folder, worker_id}}
+    Supervisor.child_spec(default_worker_spec, id: worker_id)
   end
 
-  def handle_call({:choose_worker, list_name}, _, workers) do
-    IO.puts("in Todo.Database.handle_call #{inspect(self())}")
-    key = :erlang.phash2(list_name, 3)
-    worker = Map.fetch!(workers, key)
-
-    {:reply, worker, workers}
-  end
-
-  defp choose_worker(list_name) do
-    IO.puts("in Todo.Database.choose_worker #{inspect(self())}")
-    GenServer.call(__MODULE__, {:choose_worker, list_name})
+  defp choose_worker(key) do
+    :erlang.phash2(key, @pool_size) + 1
   end
 end

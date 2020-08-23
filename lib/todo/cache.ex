@@ -1,39 +1,36 @@
 defmodule Todo.Cache do
   @moduledoc """
   Maintains a collection of to-do servers and is responsible for their creation and discovery
-  state here is a map containing %{"list name" => "pid of GenServer that manages the list"}
   """
-  use GenServer
 
-  def start() do
-    IO.puts("in Todo.Cache.start #{inspect(self())}")
-    GenServer.start(__MODULE__, nil, name: __MODULE__)
+  def start_link() do
+    IO.puts("Starting to-do cache supervisor")
+
+    DynamicSupervisor.start_link(
+      name: __MODULE__,
+      strategy: :one_for_one
+    )
   end
 
-  @doc """
-  asynchronously, get the pid for list server, create it if not found, and add it to the map state as `%{"list name" => pid}`
-  """
-  def server_process(cache_pid, todo_list_name) do
-    IO.puts("in Todo.Cache.server_process #{inspect(self())}")
-    GenServer.call(cache_pid, {:server_process, todo_list_name})
+  def child_spec(_arg) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, []},
+      type: :supervisor
+    }
   end
 
-  def init(_) do
-    IO.puts("in Todo.Cache.init #{inspect(self())}")
-    Todo.Database.start()
-    {:ok, %{}}
-  end
-
-  def handle_call({:server_process, todo_list_name}, _, todo_servers) do
-    IO.puts("in Todo.Cache.handle_call #{inspect(self())}")
-
-    case Map.fetch(todo_servers, todo_list_name) do
-      {:ok, todo_server} ->
-        {:reply, todo_server, todo_servers}
-
-      :error ->
-        {:ok, new_server} = Todo.Server.start(todo_list_name)
-        {:reply, new_server, Map.put(todo_servers, todo_list_name, new_server)}
+  def server_process(todo_list_name) do
+    case start_child(todo_list_name) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
     end
+  end
+
+  defp start_child(todo_list_name) do
+    DynamicSupervisor.start_child(
+      __MODULE__,
+      {Todo.Server, todo_list_name}
+    )
   end
 end
